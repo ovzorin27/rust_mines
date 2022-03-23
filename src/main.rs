@@ -93,7 +93,8 @@ impl Application for Stopwatch {
                 _ => {}
             },
             Message::Reset => {
-                self.duration = Duration::default();
+                self.buttons = Vec::from([button::State::new(); N * N]);
+                self.cells = generate_cells();
             },
             Message::Pressed(index) => {
                 let cell = self.cells.get_mut(index).unwrap();
@@ -175,6 +176,21 @@ impl Application for Stopwatch {
         let mut col = Column::new()
             .align_items(Align::Center)
             .spacing(4);
+        ;
+        let reset_button = Button::new(
+            &mut self.reset,
+            Text::new(format!("Reset"))
+                .horizontal_alignment(HorizontalAlignment::Center),
+        )
+            .min_height(40)
+            .padding(10)
+            .on_press(Message::Reset);
+        let reset_row = Row::new()
+            .padding(20)
+            .push(reset_button);
+
+        row = row.push(reset_row);
+
         for (index, button) in self.buttons.iter_mut().enumerate() {
             let (_, j) = (index / N, index % N);
 
@@ -187,22 +203,34 @@ impl Application for Stopwatch {
             let cell = self.cells.get(index).unwrap();
             if cell.is_opened {
                 let text;
+                let style;
                 match cell.state {
                     CellState::Mine => {
                         text = format!("X");
+                        style = style::Button::Empty(0);
                     }
                     CellState::MinesAround(count) => {
                         text = format!("{}", count);
+                        style = style::Button::Empty(count);
                     }
                 }
-                let text_view = Text::new(text)
-                    .size(28)
-                    .width(Length::Units(40))
-                    .height(Length::Units(40))
-                    .horizontal_alignment(HorizontalAlignment::Center)
-                    .vertical_alignment(VerticalAlignment::Center)
-                    .color(iced::Color::from_rgb(0.5, 0.5, 0.5),);
-                row = row.push(text_view);
+                let open_cell_view = Button::new(
+                    button,
+                    Text::new(format!("{}", text))
+                        .horizontal_alignment(HorizontalAlignment::Center),
+                )
+                    .min_width(40)
+                    .min_height(40)
+                    .padding(10)
+                    .style(style);
+                // let open_cell_view = Text::new(text)
+                //     .size(28)
+                //     .width(Length::Units(40))
+                //     .height(Length::Units(40))
+                //     .horizontal_alignment(HorizontalAlignment::Center)
+                //     .vertical_alignment(VerticalAlignment::Center)
+                //     .color(iced::Color::from_rgb(0.5, 0.5, 0.5),);
+                row = row.push(open_cell_view);
             } else {
                 let button_view = Button::new(
                     button,
@@ -313,6 +341,8 @@ mod style {
         Primary,
         Secondary,
         Destructive,
+        Mine,
+        Empty(i32),
     }
 
     impl button::StyleSheet for Button {
@@ -322,6 +352,18 @@ mod style {
                     Button::Primary => Color::from_rgb(0.11, 0.42, 0.87),
                     Button::Secondary => Color::from_rgb(0.5, 0.5, 0.5),
                     Button::Destructive => Color::from_rgb(0.8, 0.2, 0.2),
+                    Button::Empty(count) => {
+                        match *count {
+                            0 => Color::from_rgb(0.11, 0.42, 0.87),
+                            1 => Color::from_rgb(0.5, 0.5, 0.5),
+                            2 => Color::from_rgb(0.8, 0.2, 0.2),
+                            3 => Color::from_rgb(0.11, 0.42, 0.87),
+                            4 => Color::from_rgb(0.11, 0.42, 0.87),
+                            5 => Color::from_rgb(0.11, 0.42, 0.87),
+                            _ => Color::from_rgb(0.11, 0.42, 0.87)
+                        }
+                    }
+                    Button::Mine => {Color::from_rgb(0.8, 0.2, 0.2)}
                 })),
                 border_radius: 12.0,
                 shadow_offset: Vector::new(1.0, 1.0),
