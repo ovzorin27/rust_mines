@@ -1,6 +1,7 @@
-use iced::{button, executor, time, Align, Application, Button, Column, Command, Container, Element, HorizontalAlignment, Length, Row, Settings, Subscription, Text, Clipboard, VerticalAlignment};
+use iced::{Color, button, executor, time, Align, Application, Button, Column, Command, Container, Element, HorizontalAlignment, Length, Row, Settings, Subscription, Text, Clipboard, VerticalAlignment};
 use std::time::{Duration, Instant};
 
+// The side of the square and the number of mines
 const N: usize = 5;
 
 pub fn main() -> iced::Result {
@@ -8,17 +9,16 @@ pub fn main() -> iced::Result {
 }
 
 struct Stopwatch {
-    duration: Duration,
     state: State,
-    toggle: button::State,
     reset: button::State,
     buttons: Vec<button::State>,
     cells: Vec<Cell>,
 }
 
 enum State {
-    Idle,
-    Ticking { last_tick: Instant },
+    Game,
+    Win,
+    Fail,
 }
 
 #[derive(Clone)]
@@ -36,7 +36,7 @@ impl Default for Cell {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 enum CellState {
     Mine,
     MinesAround(i32),
@@ -44,9 +44,7 @@ enum CellState {
 
 #[derive(Debug, Clone)]
 enum Message {
-    Toggle,
     Reset,
-    Tick(Instant),
     Pressed(usize),
 }
 
@@ -58,9 +56,7 @@ impl Application for Stopwatch {
     fn new(_flags: ()) -> (Stopwatch, Command<Message>) {
         (
             Stopwatch {
-                duration: Duration::default(),
-                state: State::Idle,
-                toggle: button::State::new(),
+                state: State::Game,
                 reset: button::State::new(),
                 buttons: Vec::from([button::State::new(); N * N]),
                 cells: generate_cells(),
@@ -70,35 +66,33 @@ impl Application for Stopwatch {
     }
 
     fn title(&self) -> String {
-        String::from("Stopwatch - Iced")
+        String::from("Mines - Iced")
     }
 
     fn update(&mut self, message: Message, _clipboard: &mut Clipboard) -> Command<Message> {
         match message {
-            Message::Toggle => match self.state {
-                State::Idle => {
-                    self.state = State::Ticking {
-                        last_tick: Instant::now(),
-                    };
-                }
-                State::Ticking { .. } => {
-                    self.state = State::Idle;
-                }
-            },
-            Message::Tick(now) => match &mut self.state {
-                State::Ticking { last_tick } => {
-                    self.duration += now - *last_tick;
-                    *last_tick = now;
-                }
-                _ => {}
-            },
             Message::Reset => {
+                self.state = State::Game;
                 self.buttons = Vec::from([button::State::new(); N * N]);
                 self.cells = generate_cells();
             },
-            Message::Pressed(index) => {
-                let cell = self.cells.get_mut(index).unwrap();
-                open_empty_cells(index, &mut self.cells);
+            Message::Pressed(index) => match self.state {
+                State::Fail | State::Win => { },
+                State::Game => {
+                    let cell = self.cells.get_mut(index).unwrap();
+                    match cell.state {
+                        CellState::Mine => {
+                            self.state = State::Fail;
+                            open_mines(&mut self.cells);
+                        }
+                        CellState::MinesAround(_) => {
+                            open_empty_cells(index, &mut self.cells);
+                            if is_win(&self.cells) {
+                                self.state = State::Win;
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -106,71 +100,10 @@ impl Application for Stopwatch {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        match self.state {
-            State::Idle => Subscription::none(),
-            State::Ticking { .. } => {
-                time::every(Duration::from_millis(10)).map(Message::Tick)
-            }
-        }
+        Subscription::none()
     }
 
     fn view(&mut self) -> Element<Message> {
-        // const MINUTE: u64 = 60;
-        // const HOUR: u64 = 60 * MINUTE;
-        //
-        // let seconds = self.duration.as_secs();
-        //
-        // let duration = Text::new(format!(
-        //     "{:0>2}:{:0>2}:{:0>2}.{:0>2}",
-        //     seconds / HOUR,
-        //     (seconds % HOUR) / MINUTE,
-        //     seconds % MINUTE,
-        //     self.duration.subsec_millis() / 10,
-        // ))
-        //     .size(40);
-        //
-        // let button = |state, label, style| {
-        //     Button::new(
-        //         state,
-        //         Text::new(label)
-        //             .horizontal_alignment(HorizontalAlignment::Center),
-        //     )
-        //         .min_width(80)
-        //         .padding(10)
-        //         .style(style)
-        // };
-        //
-        // let toggle_button = {
-        //     let (label, color) = match self.state {
-        //         State::Idle => ("Start", style::Button::Primary),
-        //         State::Ticking { .. } => ("Stop", style::Button::Destructive),
-        //     };
-        //
-        //     button(&mut self.toggle, label, color).on_press(Message::Toggle)
-        // };
-        //
-        // let reset_button =
-        //     button(&mut self.reset, "Reset", style::Button::Secondary)
-        //         .on_press(Message::Reset);
-        //
-        // let controls = Row::new()
-        //     .spacing(20)
-        //     .push(toggle_button)
-        //     .push(reset_button);
-        //
-        // let content = Column::new()
-        //     .align_items(Align::Center)
-        //     .spacing(20)
-        //     .push(duration)
-        //     .push(controls);
-        //
-        // Container::new(content)
-        //     .width(Length::Fill)
-        //     .height(Length::Fill)
-        //     .center_x()
-        //     .center_y()
-        //     .into()
-
         let mut row  = Row::new()
             .spacing(0);
         let mut col = Column::new()
@@ -206,11 +139,15 @@ impl Application for Stopwatch {
                 let style;
                 match cell.state {
                     CellState::Mine => {
-                        text = format!("X");
-                        style = style::Button::Empty(0);
+                        text = format!("x");
+                        style = style::Button::Mine;
                     }
                     CellState::MinesAround(count) => {
-                        text = format!("{}", count);
+                        if count == 0 {
+                            text = format!("");
+                        } else {
+                            text = format!("{}", count);
+                        }
                         style = style::Button::Empty(count);
                     }
                 }
@@ -223,13 +160,6 @@ impl Application for Stopwatch {
                     .min_height(40)
                     .padding(10)
                     .style(style);
-                // let open_cell_view = Text::new(text)
-                //     .size(28)
-                //     .width(Length::Units(40))
-                //     .height(Length::Units(40))
-                //     .horizontal_alignment(HorizontalAlignment::Center)
-                //     .vertical_alignment(VerticalAlignment::Center)
-                //     .color(iced::Color::from_rgb(0.5, 0.5, 0.5),);
                 row = row.push(open_cell_view);
             } else {
                 let button_view = Button::new(
@@ -245,6 +175,21 @@ impl Application for Stopwatch {
             }
         }
         col = col.push(row);
+
+        let (text_state, text_color) = match self.state {
+            State::Win => ("You win!", Color::from_rgb(0.2, 0.2, 0.8)),
+            State::Fail => ("You lose :(", Color::from_rgb(0.8, 0.2, 0.2)),
+            _ => (" ", Color::default()),
+        };
+        let label = Text::new(format!("{}", text_state))
+            .horizontal_alignment(HorizontalAlignment::Center)
+            .size(24)
+            .color(text_color);
+        let label_row = Row::new()
+            .padding(20)
+            .push(label);
+
+        col = col.push(label_row);
 
         Container::new(col)
             .width(Length::Fill)
@@ -301,6 +246,29 @@ fn generate_cells() -> Vec<Cell> {
     cells
 }
 
+fn open_mines(cells: &mut [Cell]) {
+    cells.iter_mut()
+        .filter(|c| c.state == CellState::Mine)
+        .for_each(|c| c.is_opened = true);
+}
+
+fn is_win(cells: &[Cell]) -> bool {
+    let mut is_one_closed = false;
+
+    for cell in cells.iter() {
+        match cell.state {
+            CellState::Mine => continue,
+            CellState::MinesAround(_) if !cell.is_opened => {
+                is_one_closed = true;
+                break;
+            }
+            CellState::MinesAround(_) => continue,
+        }
+    }
+
+    !is_one_closed
+}
+
 fn open_empty_cells(index: usize, cells: &mut [Cell]) {
     fn open_empty_cells_recursive(i: i32, j: i32, cells: &mut [Cell]) {
         if i < 0 || i >= N as i32 || j < 0 || j >= N as i32 {
@@ -338,9 +306,7 @@ mod style {
     use iced::{button, Background, Color, Vector};
 
     pub enum Button {
-        Primary,
-        Secondary,
-        Destructive,
+        NotOpened,
         Mine,
         Empty(i32),
     }
@@ -348,26 +314,28 @@ mod style {
     impl button::StyleSheet for Button {
         fn active(&self) -> button::Style {
             button::Style {
-                background: Some(Background::Color(match self {
-                    Button::Primary => Color::from_rgb(0.11, 0.42, 0.87),
-                    Button::Secondary => Color::from_rgb(0.5, 0.5, 0.5),
-                    Button::Destructive => Color::from_rgb(0.8, 0.2, 0.2),
-                    Button::Empty(count) => {
-                        match *count {
-                            0 => Color::from_rgb(0.11, 0.42, 0.87),
-                            1 => Color::from_rgb(0.5, 0.5, 0.5),
-                            2 => Color::from_rgb(0.8, 0.2, 0.2),
-                            3 => Color::from_rgb(0.11, 0.42, 0.87),
-                            4 => Color::from_rgb(0.11, 0.42, 0.87),
-                            5 => Color::from_rgb(0.11, 0.42, 0.87),
-                            _ => Color::from_rgb(0.11, 0.42, 0.87)
-                        }
-                    }
-                    Button::Mine => {Color::from_rgb(0.8, 0.2, 0.2)}
-                })),
-                border_radius: 12.0,
+                background: match self {
+                    Button::NotOpened => None,
+                    Button::Empty(_) => Some(Background::Color(Color::from_rgb(0.8, 0.8, 0.8))),
+                    Button::Mine => Some(Background::Color(Color::from_rgb(0.8, 0.2, 0.2))),
+                },
+                border_radius: 2.0,
                 shadow_offset: Vector::new(1.0, 1.0),
-                text_color: Color::WHITE,
+                text_color: match self {
+                    Button::NotOpened => Color::from_rgb(0.11, 0.42, 0.87),
+                    Button::Mine => Color::from_rgb(0.0, 0.0, 0.0),
+                    Button::Empty(count) => match *count {
+                        1 => Color::from_rgb(0.4, 0.0, 0.0),
+                        2 => Color::from_rgb(0.0, 0.4, 0.0),
+                        3 => Color::from_rgb(0.0, 0.0, 0.4),
+                        4 => Color::from_rgb(0.4, 0.0, 0.0),
+                        5 => Color::from_rgb(0.9, 0.0, 0.0),
+                        6 => Color::from_rgb(0.9, 0.0, 0.0),
+                        7 => Color::from_rgb(0.9, 0.0, 0.0),
+                        8 => Color::from_rgb(0.9, 0.0, 0.0),
+                        _ => Color::from_rgb(0.0, 0.0, 0.0),
+                    }
+                },
                 ..button::Style::default()
             }
         }
