@@ -1,8 +1,9 @@
-use iced::{Color, button, executor, time, Align, Application, Button, Column, Command, Container, Element, HorizontalAlignment, Length, Row, Settings, Subscription, Text, Clipboard, VerticalAlignment};
+use iced::{Color, button, executor, time, Align, Application, Button, Column, Command, Container, Element, HorizontalAlignment, Length, Row, Settings, Subscription, Text, Clipboard, VerticalAlignment, Font};
 use std::time::{Duration, Instant};
 
 // The side of the square and the number of mines
-const N: usize = 5;
+const N: usize = 10;
+const MINES_COUNT: usize = 20;
 
 pub fn main() -> iced::Result {
     Stopwatch::run(Settings::default())
@@ -109,7 +110,7 @@ impl Application for Stopwatch {
         let mut col = Column::new()
             .align_items(Align::Center)
             .spacing(4);
-        ;
+
         let reset_button = Button::new(
             &mut self.reset,
             Text::new(format!("Reset"))
@@ -218,7 +219,7 @@ fn generate_cells() -> Vec<Cell> {
     }
 
     let mut cells: Vec<Cell> = std::iter::repeat(Cell::default()).take(N * N).collect();
-    for _ in 0..N {
+    for _ in 0..MINES_COUNT {
         loop {
             let mine_index = rand::random::<usize>() % (N * N);
             let cell = cells.get_mut(mine_index).unwrap();
@@ -302,6 +303,28 @@ fn open_empty_cells(index: usize, cells: &mut [Cell]) {
     open_empty_cells_recursive(i, j, cells);
 }
 
+// Fonts
+const ICONS: Font = Font::External {
+    name: "Icons",
+    bytes: include_bytes!("../fonts/icons.ttf"),
+};
+
+fn icon(unicode: char) -> Text {
+    Text::new(unicode.to_string())
+        .font(ICONS)
+        .width(Length::Units(20))
+        .horizontal_alignment(HorizontalAlignment::Center)
+        .size(20)
+}
+
+fn edit_icon() -> Text {
+    icon('\u{F303}')
+}
+
+fn delete_icon() -> Text {
+    icon('\u{F1F8}')
+}
+
 mod style {
     use iced::{button, Background, Color, Vector};
 
@@ -325,14 +348,14 @@ mod style {
                     Button::NotOpened => Color::from_rgb(0.11, 0.42, 0.87),
                     Button::Mine => Color::from_rgb(0.0, 0.0, 0.0),
                     Button::Empty(count) => match *count {
-                        1 => Color::from_rgb(0.4, 0.0, 0.0),
-                        2 => Color::from_rgb(0.0, 0.4, 0.0),
-                        3 => Color::from_rgb(0.0, 0.0, 0.4),
-                        4 => Color::from_rgb(0.4, 0.0, 0.0),
-                        5 => Color::from_rgb(0.9, 0.0, 0.0),
-                        6 => Color::from_rgb(0.9, 0.0, 0.0),
-                        7 => Color::from_rgb(0.9, 0.0, 0.0),
-                        8 => Color::from_rgb(0.9, 0.0, 0.0),
+                        1 => Color::from_rgb(0.9, 0.0, 0.0),
+                        2 => Color::from_rgb(0.0, 0.9, 0.0),
+                        3 => Color::from_rgb(0.0, 0.0, 0.9),
+                        4 => Color::from_rgb(0.9, 0.6, 0.6),
+                        5 => Color::from_rgb(0.6, 0.9, 0.6),
+                        6 => Color::from_rgb(0.6, 0.6, 0.9),
+                        7 => Color::from_rgb(0.6, 0.0, 0.6),
+                        8 => Color::from_rgb(0.0, 0.6, 0.6),
                         _ => Color::from_rgb(0.0, 0.0, 0.0),
                     }
                 },
